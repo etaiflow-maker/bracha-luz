@@ -34,12 +34,19 @@
   .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); flex: none; }
   .dot.stale { background: var(--warn); } .dot.err { background: var(--bad); }
   .refresh { margin-inline-start: auto; font: inherit; font-size: .85rem; color: var(--accent); background: none; border: 0; padding: 8px 0 8px 8px; cursor: pointer; }
-  .tabs { position: sticky; top: 0; z-index: 3; background: var(--bg); display: flex; gap: 6px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+  .bar { position: sticky; top: 0; z-index: 3; background: var(--bg); border-bottom: 1px solid var(--line); }
+  .tabs { display: flex; gap: 6px; padding: 8px 0 6px; }
+  .filters { display: flex; gap: 6px; padding: 0 0 8px; overflow-x: auto; scrollbar-width: none; }
+  .filters::-webkit-scrollbar { display: none; }
+  .filter { flex: none; font: inherit; font-size: .88rem; min-height: 36px; padding: 6px 14px; border-radius: 999px; border: 1px solid var(--line); background: transparent; color: var(--muted); cursor: pointer; white-space: nowrap; }
+  .filter[aria-pressed="true"] { background: var(--fg); border-color: var(--fg); color: var(--bg); }
+  .filter .n { font-variant-numeric: tabular-nums; opacity: .7; margin-inline-start: .35em; }
+  .filter:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .tab { flex: 1; font: inherit; font-weight: 500; padding: 10px 8px; min-height: 44px; border-radius: 10px; border: 1px solid transparent; background: transparent; color: var(--muted); cursor: pointer; }
   .tab[aria-selected="true"] { background: var(--panel); border-color: var(--line); color: var(--fg); }
   .tab .n { font-variant-numeric: tabular-nums; font-weight: 400; opacity: .75; margin-inline-start: .3em; }
   .tab:focus-visible, .refresh:focus-visible, .row:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-  h2.day { position: sticky; top: 61px; z-index: 2; background: var(--bg); margin: 0; padding: 16px 0 8px; font-size: .95rem; font-weight: 600; display: flex; gap: 8px; align-items: baseline; }
+  h2.day { position: sticky; top: var(--bar-h, 108px); z-index: 2; background: var(--bg); margin: 0; padding: 16px 0 8px; font-size: .95rem; font-weight: 600; display: flex; gap: 8px; align-items: baseline; }
   h2.day .sub { color: var(--muted); font-weight: 400; font-size: .85rem; }
   h2.day.today .name { color: var(--accent); }
   .list { display: flex; flex-direction: column; gap: 8px; }
@@ -81,9 +88,17 @@
     </div>
   </header>
 
-  <div class="tabs" role="tablist">
-    <button class="tab" role="tab" id="tab-upcoming" aria-selected="true" aria-controls="view" type="button">מתוכנן<span class="n" id="n-upcoming"></span></button>
-    <button class="tab" role="tab" id="tab-recent" aria-selected="false" aria-controls="view" type="button">עלה לאחרונה<span class="n" id="n-recent"></span></button>
+  <div class="bar" id="bar">
+    <div class="tabs" role="tablist">
+      <button class="tab" role="tab" id="tab-upcoming" aria-selected="true" aria-controls="view" type="button">מתוכנן<span class="n" id="n-upcoming"></span></button>
+      <button class="tab" role="tab" id="tab-recent" aria-selected="false" aria-controls="view" type="button">עלה לאחרונה<span class="n" id="n-recent"></span></button>
+    </div>
+    <div class="filters" role="group" aria-label="סינון לפי סוג">
+      <button class="filter" type="button" data-filter="all" aria-pressed="true">הכול<span class="n"></span></button>
+      <button class="filter" type="button" data-filter="post" aria-pressed="false">פוסטים<span class="n"></span></button>
+      <button class="filter" type="button" data-filter="story" aria-pressed="false">סטוריז<span class="n"></span></button>
+      <button class="filter" type="button" data-filter="reel" aria-pressed="false">רילס<span class="n"></span></button>
+    </div>
   </div>
 
   <main id="view" role="tabpanel"></main>
@@ -109,7 +124,14 @@
   var PLATFORM = { instagram: "אינסטגרם", facebook: "פייסבוק", tiktok: "טיקטוק" };
   var DAYS = ["יום ראשון", "יום שני", "יום שלישי", "יום רביעי", "יום חמישי", "יום שישי", "שבת"];
 
-  var data = null, tab = "upcoming", openKey = null, lastOk = 0, lastError = false;
+  var data = null, tab = "upcoming", filter = "all", openKey = null, lastOk = 0, lastError = false;
+  var FILTER_EMPTY = { post: "פוסטים", story: "סטוריז", reel: "רילס" };
+  try { var saved = localStorage.getItem("luz-filter"); if (saved && (saved === "all" || FILTER_EMPTY[saved])) filter = saved; } catch (e) {}
+
+  function kindCls(r) { return (KIND[r.kind] || KIND.product).cls; }
+  function byFilter(rows) {
+    return filter === "all" ? rows : rows.filter(function (r) { return kindCls(r) === filter; });
+  }
   var view = document.getElementById("view");
 
   var fmtKey = new Intl.DateTimeFormat("en-CA", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit" });
@@ -228,18 +250,31 @@
     document.getElementById("n-upcoming").textContent = data.upcoming.length;
     document.getElementById("n-recent").textContent = data.recent.length;
 
+    // המספר על כל כפתור סינון מתייחס ללשונית הפתוחה.
+    var base = tab === "upcoming" ? data.upcoming : data.recent;
+    Array.prototype.forEach.call(document.querySelectorAll(".filter"), function (b) {
+      var f = b.getAttribute("data-filter");
+      b.setAttribute("aria-pressed", String(f === filter));
+      b.querySelector(".n").textContent = f === "all" ? base.length
+        : base.filter(function (r) { return kindCls(r) === f; }).length;
+    });
+    var what = filter === "all" ? "פרסומים" : FILTER_EMPTY[filter];
+
     if (tab === "upcoming") {
-      if (data.failed && data.failed.length) {
+      var failed = byFilter(data.failed || []);
+      if (failed.length) {
         var h = el("h2", "day"); h.appendChild(el("span", "name", "נכשלו")); view.appendChild(h);
         var fl = el("div", "list");
-        data.failed.forEach(function (r) { fl.appendChild(rowEl(r, "failed")); });
+        failed.forEach(function (r) { fl.appendChild(rowEl(r, "failed")); });
         view.appendChild(fl);
       }
-      if (!data.upcoming.length) view.appendChild(el("p", "empty-state", "אין כרגע פרסומים מתוכננים."));
-      else renderList(data.upcoming, "upcoming", view);
+      var up = byFilter(data.upcoming);
+      if (!up.length) view.appendChild(el("p", "empty-state", "אין כרגע " + what + " מתוכננים."));
+      else renderList(up, "upcoming", view);
     } else {
-      if (!data.recent.length) view.appendChild(el("p", "empty-state", "לא עלה כלום בשבועיים האחרונים."));
-      else renderList(data.recent, "recent", view);
+      var rec = byFilter(data.recent);
+      if (!rec.length) view.appendChild(el("p", "empty-state", "לא עלו " + what + " בשבועיים האחרונים."));
+      else renderList(rec, "recent", view);
     }
     window.scrollTo(0, y);
   }
@@ -277,6 +312,21 @@
   }
   document.getElementById("tab-upcoming").addEventListener("click", function () { selectTab("upcoming"); });
   document.getElementById("tab-recent").addEventListener("click", function () { selectTab("recent"); });
+  Array.prototype.forEach.call(document.querySelectorAll(".filter"), function (b) {
+    b.addEventListener("click", function () {
+      filter = b.getAttribute("data-filter"); openKey = null;
+      try { localStorage.setItem("luz-filter", filter); } catch (e) {}
+      window.scrollTo(0, 0);
+      render();
+    });
+  });
+  // כותרות הימים נדבקות מתחת לסרגל, שגובהו תלוי בגודל הגופן במכשיר.
+  function setBarHeight() {
+    document.documentElement.style.setProperty("--bar-h", document.getElementById("bar").offsetHeight + "px");
+  }
+  window.addEventListener("resize", setBarHeight);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(setBarHeight);
+  setBarHeight();
   document.getElementById("refresh").addEventListener("click", load);
   document.addEventListener("visibilitychange", function () {
     if (!document.hidden && Date.now() - lastOk > 30000) load();
