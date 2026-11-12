@@ -190,8 +190,8 @@
     if (mode === "recent") top.appendChild(el("span", "flag ok", "עלה ✓"));
     if (mode === "failed") top.appendChild(el("span", "flag bad", "נכשל"));
     body.appendChild(top);
-    // התווית "סטורי" כבר מופיעה בצ'יפ, אז לא חוזרים עליה בשם.
-    var title = String(r.title || "").replace(/^סטורי\s*[:—–-]\s*/, "");
+    // התווית (סטורי / ריל) כבר מופיעה בצ'יפ, אז לא חוזרים עליה בשם.
+    var title = String(r.title || "").replace(/^(סטורי|ריל)\s*[:—–-]\s*/, "");
     body.appendChild(el("div", "title", title || "ללא שם"));
     var plats = (r.platforms || []).map(function (p) { return PLATFORM[p] || p; }).join(" + ");
     if (r.count > 1 && r.kind !== "story") plats += " · " + r.count + " תמונות";
